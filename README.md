@@ -18,6 +18,31 @@ This repository hosts a TensorFlow pipeline that replatforms the Playground Seri
    ```
 4. Submit the generated `submission_tpu.csv` to Kaggle.
 
+## Running inside a Kaggle notebook
+You do **not** need to edit the script to adjust paths—pass them from a cell instead:
+
+```python
+# Cell 1: (optional) inspect data
+!ls /kaggle/input/playground-series-s5e12
+
+# Cell 2: train and write submission_tpu.csv to the working directory
+!python tpu_diabetes_pipeline.py train \
+    --train_csv /kaggle/input/playground-series-s5e12/train.csv \
+    --test_csv /kaggle/input/playground-series-s5e12/test.csv \
+    --sample_submission_csv /kaggle/input/playground-series-s5e12/sample_submission.csv \
+    --output_submission /kaggle/working/submission_tpu.csv
+
+# Cell 3: download or view the submission
+!head /kaggle/working/submission_tpu.csv
+```
+
+If you want faster experiments in the notebook, you can also override training parameters without
+modifying the file:
+
+```python
+!python tpu_diabetes_pipeline.py train --epochs 10 --batch_per_replica 256
+```
+
 ## Files
 - `tpu_diabetes_pipeline.py` – end-to-end training script with CV, weighting, and inference.
 - `README.md` – this guide.

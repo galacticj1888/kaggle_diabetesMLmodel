@@ -538,12 +538,40 @@ def run_pipeline(cfg: CFG) -> None:
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="TPU-ready training for diabetes competition")
     parser.add_argument("command", choices=["train"], help="Run the training pipeline")
+    parser.add_argument("--train_csv", type=str, default=None, help="Path to train.csv")
+    parser.add_argument("--test_csv", type=str, default=None, help="Path to test.csv")
+    parser.add_argument(
+        "--sample_submission_csv",
+        type=str,
+        default=None,
+        help="Path to sample_submission.csv",
+    )
+    parser.add_argument("--output_submission", type=str, default=None, help="Where to save the submission CSV")
+    parser.add_argument("--epochs", type=int, default=None, help="Override epoch count (default from CFG)")
+    parser.add_argument(
+        "--batch_per_replica",
+        type=int,
+        default=None,
+        help="Global batch size is this value times TPU replicas",
+    )
     return parser.parse_args()
 
 
 def main():
     args = parse_args()
     cfg = CFG()
+    # Optional CLI overrides so Kaggle notebooks can pass paths without editing the file
+    for field in [
+        "train_csv",
+        "test_csv",
+        "sample_submission_csv",
+        "output_submission",
+        "epochs",
+        "batch_per_replica",
+    ]:
+        val = getattr(args, field, None)
+        if val is not None:
+            setattr(cfg, field, val)
     if args.command == "train":
         run_pipeline(cfg)
 
