@@ -178,7 +178,6 @@ def adversarial_weights(
     df_train, df_test, _ = encode_categories(df_train, df_test, cat_cols)
 
     feature_cols = [c for c in df_train.columns if c not in {cfg.target, cfg.id_col}]
-    print(f"Adversarial features ({len(feature_cols)}): {feature_cols[:10]}...")
     X_combined = pd.concat([df_train[feature_cols], df_test[feature_cols]], axis=0, ignore_index=True)
     y_combined = np.concatenate([
         np.zeros(len(df_train), dtype=np.int8),
@@ -341,7 +340,7 @@ def run_cv(
 
         with strategy.scope():
             model = build_model(num_cols, cat_cols, vocab_sizes, cfg)
-            opt = AdamW(
+            opt = tf.keras.optimizers.experimental.AdamW(
                 learning_rate=cfg.lr,
                 weight_decay=cfg.weight_decay,
             )
@@ -469,8 +468,8 @@ def run_pipeline(cfg: CFG) -> None:
 
     # Use percentile features as numerics; keep categorical codes
     pct_cols = [f"{c}__pct" for c in num_cols]
-    train_aug = train_pct.copy()
-    test_aug = test_pct.copy()
+    train_aug = pd.concat([train_pct, train[cat_cols]], axis=1)
+    test_aug = pd.concat([test_pct, test[cat_cols]], axis=1)
 
     # Adversarial weighting to approximate the test distribution
     p_test, weights = adversarial_weights(train_aug, test_aug, pct_cols, cat_cols, cfg)
