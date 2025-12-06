@@ -43,6 +43,12 @@ SEED = 2025
 np.random.seed(SEED)
 tf.random.set_seed(SEED)
 
+# TensorFlow/Keras compatibility shim for AdamW across Keras 2/3
+try:  # pragma: no cover - runtime compatibility guard
+    AdamW = tf.keras.optimizers.AdamW
+except AttributeError:  # pragma: no cover - older TF/Keras
+    AdamW = tf.keras.optimizers.experimental.AdamW
+
 
 @dataclass
 class CFG:
