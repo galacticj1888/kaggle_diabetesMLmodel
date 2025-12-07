@@ -1,70 +1,62 @@
-# TPU-first diabetes classifier
+# Shift-aware Kaggle Diabetes Baselines (S5E12)
 
-This repository hosts a TensorFlow pipeline that replatforms the Playground Series S5E12 diabetes competition workflow onto **Cloud TPU v5e-8** (with graceful CPU/GPU fallback). The script keeps feature engineering light but adds domain-adaptation tricks so the model is trained on a distribution closer to the public test set.
+This repository provides a clean, fast baseline stack for the **Playground Series S5E12 – Diabetes Prediction** competition. It focuses on two runs you can execute directly inside a Kaggle notebook in under 30 minutes:
 
-## Highlights
-- **TPU-aware training** – automatic TPU detection, mixed bfloat16, and batched `tf.data` input.
-- **Domain alignment** – adversarial validation estimates `p(test|x)`, importance weights `p/(1-p)`, and `domain_bin` strata for shift-aware CV.
-- **Test-stable features** – global percentile transforms for numerics plus embedding-based categoricals (no GPU-only encoders).
-- **Ensembled for AUC** – combines a TPU NN, a tabular HistGradientBoosting model, and a logistic stacker that blends both with `p_test`.
-- **Single entry point** – run `python tpu_diabetes_pipeline.py train` to train and emit `submission_tpu.csv` and `oof_tpu.npy`.
+- **Naive baseline**: plain LightGBM, no shift handling — a reality check.
+- **Shift-aware baseline**: LightGBM with adversarial weights, p_test feature, and shift-aware stratification.
 
-## Quickstart
-1. Update file paths in `CFG` if needed (defaults match the Kaggle competition input layout).
-2. Launch a TPU notebook or a CPU/GPU runtime.
-3. Execute:
-   ```bash
-   python tpu_diabetes_pipeline.py train
-   ```
-4. Submit the generated `submission_tpu.csv` to Kaggle.
+Artifacts are cached to accelerate iteration and to make the effect of distribution-shift mitigation measurable.
 
-### Upload a model directory to Kaggle Models (optional)
-If you have a SavedModel or other artefacts you want to publish to Kaggle Models, call the new
-`upload-model` command (wrap in a notebook cell with `!` when running on Kaggle):
+## Quickstart (Kaggle)
 
 ```bash
-python tpu_diabetes_pipeline.py upload-model \
-  --local_model_dir /kaggle/working/export_dir \
-  --owner sicomaccapital \
-  --model_slug diabetes-tpu \
-  --variation_slug default \
-  --framework keras \
-  --version_notes "Update 2025-12-06"
+# Option A: Naive baseline (no shift awareness, ~10 min)
+!python run_kaggle.py --mode naive
+
+# Option B: Shift-aware baseline (compute adversarial artifacts + train)
+!python run_kaggle.py --mode full
+
+# Option C: Shift-aware baseline when artifacts already exist
+!python run_kaggle.py --mode shift --use_weights --use_p_test_feature --stratify_domain
 ```
 
-The `local_model_dir` should point to the directory containing your model files (e.g., a TensorFlow
-SavedModel or any export you want versioned). The command handles `kagglehub.login()` and publishes
-to the handle `<owner>/<model_slug>/<framework>/<variation_slug>`.
+Outputs are written to the working directory:
+- `submission_naive.csv`, `oof_naive.npy`, `test_naive.npy`
+- `submission_shift.csv`, `oof_shift.npy`, `test_shift.npy`
+- `artifacts/adversarial_mapping.parquet`, `artifacts/adversarial_metadata.json`
 
-## Running inside a Kaggle notebook
-You do **not** need to edit the script to adjust paths—pass them from a cell instead:
+## Components
 
-```python
-# Cell 1: (optional) inspect data
-!ls /kaggle/input/playground-series-s5e12
+### `baseline_naive.py`
+- 5-fold StratifiedKFold on the target only.
+- Native LightGBM categorical handling with simple missing-value fills.
+- Early stopping (100 rounds, max 2000 trees) and verbose per-fold logging.
+- Saves OOF/test predictions and a submission CSV.
 
-# Cell 2: train and write submission_tpu.csv to the working directory
-!python tpu_diabetes_pipeline.py train \
-    --train_csv /kaggle/input/playground-series-s5e12/train.csv \
-    --test_csv /kaggle/input/playground-series-s5e12/test.csv \
-    --sample_submission_csv /kaggle/input/playground-series-s5e12/sample_submission.csv \
-    --output_submission /kaggle/working/submission_tpu.csv
+### `adversarial_mapping.py`
+- Trains a 5-fold adversarial classifier (train=0 vs test=1).
+- Computes `p_test`, `domain_weight` (clipped/normalized), and `domain_bin` (10-quantile bins).
+- Saves `artifacts/adversarial_mapping.parquet` and metadata JSON; skips recomputation unless `--force` is passed.
 
-# Cell 3: download or view the submission
-!head /kaggle/working/submission_tpu.csv
-```
+### `baseline_shift_aware.py`
+- Loads adversarial artifacts and optionally:
+  - Applies `domain_weight` as `sample_weight`.
+  - Adds `p_test` as a feature.
+  - Stratifies CV by `label × domain_bin`.
+- Reports weighted and unweighted AUC per fold plus OOF.
+- Saves OOF/test predictions and a submission CSV.
 
-If you want faster experiments in the notebook, you can also override training parameters without
-modifying the file:
+### `run_kaggle.py`
+- Single entrypoint for Kaggle notebooks:
+  - `--mode naive`: run the naive baseline.
+  - `--mode shift`: run shift-aware baseline (assumes artifacts exist).
+  - `--mode full`: recompute adversarial artifacts then train shift-aware baseline with all ablations on.
 
-```python
-!python tpu_diabetes_pipeline.py train --epochs 10 --batch_per_replica 256
-```
-
-## Files
-- `tpu_diabetes_pipeline.py` – end-to-end training script with CV, weighting, and inference.
-- `README.md` – this guide.
+## Paths
+- Kaggle data: `/kaggle/input/playground-series-s5e12/{train.csv,test.csv,sample_submission.csv}`
+- Local default: `./data/{train.csv,test.csv,sample_submission.csv}`
 
 ## Notes
-- The pipeline avoids GPU-only libraries (CUDA XGBoost/cuML) so it can run end-to-end on TPU hosts.
-- Validation uses **weighted AUC** with domain weights to mimic the leaderboard distribution.
+- Categorical values are aligned across train/test with an explicit `UNKNOWN` bucket.
+- All outputs are float32 and preserve row order relative to the input CSVs.
+- Logging is intentionally verbose so you can follow training progress from notebook cells.
