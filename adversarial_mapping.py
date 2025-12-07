@@ -42,7 +42,7 @@ def identify_columns(df: pd.DataFrame) -> Tuple[List[str], List[str]]:
     for col in df.columns:
         if col in {TARGET_COL, ID_COL}:
             continue
-        if pd.api.types.is_object_dtype(df[col]) or pd.api.types.is_categorical_dtype(df[col]) or pd.api.types.is_bool_dtype(
+        if pd.api.types.is_object_dtype(df[col]) or isinstance(df[col].dtype, pd.CategoricalDtype) or pd.api.types.is_bool_dtype(
             df[col]
         ):
             cat_cols.append(col)
@@ -173,12 +173,12 @@ def save_artifacts(
                 ID_COL: int(row_id),
                 "p_test": float(p),
                 "domain_weight": float(weights[idx]),
-                "domain_bin": int(bins.iloc[idx]) if not pd.isna(bins.iloc[idx]) else -1,
+                "domain_bin": int(bins[idx]) if not pd.isna(bins[idx]) else -1,
                 "is_train": True,
             }
         )
     for idx, (row_id, p) in enumerate(zip(test[ID_COL].values, test_p)):
-        bin_val = test_bins.iloc[idx]
+        bin_val = test_bins[idx]
         mapping_rows.append(
             {
                 ID_COL: int(row_id),
