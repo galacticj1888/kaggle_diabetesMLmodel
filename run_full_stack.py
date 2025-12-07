@@ -1,4 +1,5 @@
 import argparse
+import os
 import subprocess
 from pathlib import Path
 
@@ -16,8 +17,10 @@ def run_script(script_name: str, extra_args=None):
     subprocess.check_call(cmd)
 
 
-def main(models, force=False, no_ensemble=False, smoke=False):
+def main(models, force=False, no_ensemble=False, smoke=False, gpu=False):
     ensure_dirs()
+    if gpu:
+        os.environ["FORCE_GPU"] = "1"
     model_map = {
         "lgbm": "baseline_lgbm.py",
         "xgb": "baseline_xgboost.py",
@@ -45,7 +48,8 @@ if __name__ == "__main__":
     parser.add_argument("--force", action="store_true", help="retrain even if outputs exist")
     parser.add_argument("--no-ensemble", action="store_true", help="skip ensemble step")
     parser.add_argument("--smoke", action="store_true", help="fast 2-fold tiny runs")
+    parser.add_argument("--gpu", action="store_true", help="force GPU mode and fail if unavailable")
     args = parser.parse_args()
 
     models = [m.strip() for m in args.models.split(",") if m.strip()]
-    main(models=models, force=args.force, no_ensemble=args.no_ensemble, smoke=args.smoke)
+    main(models=models, force=args.force, no_ensemble=args.no_ensemble, smoke=args.smoke, gpu=args.gpu)

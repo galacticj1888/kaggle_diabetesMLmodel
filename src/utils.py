@@ -51,7 +51,13 @@ def split_cols(train_df: pd.DataFrame, target: str, id_col: str) -> Tuple[List[s
     return num_cols, cat_cols
 
 
-def prepare_common(train_df: pd.DataFrame, test_df: pd.DataFrame, num_cols: List[str], cat_cols: List[str]):
+def prepare_common(
+    train_df: pd.DataFrame,
+    test_df: pd.DataFrame,
+    num_cols: List[str],
+    cat_cols: List[str],
+    encode_cats_for_gpu: bool = False,
+):
     train_proc = train_df.copy()
     test_proc = test_df.copy()
 
@@ -68,6 +74,11 @@ def prepare_common(train_df: pd.DataFrame, test_df: pd.DataFrame, num_cols: List
         cats = pd.Index(pd.concat([train_proc[col], test_proc[col]], axis=0).unique())
         train_proc[col] = pd.Categorical(train_proc[col], categories=cats)
         test_proc[col] = pd.Categorical(test_proc[col], categories=cats)
+
+    if encode_cats_for_gpu:
+        for col in cat_cols:
+            train_proc[col] = train_proc[col].cat.codes.astype(np.int32)
+            test_proc[col] = test_proc[col].cat.codes.astype(np.int32)
 
     return train_proc, test_proc, num_cols, cat_cols
 

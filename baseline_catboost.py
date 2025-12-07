@@ -1,4 +1,6 @@
 import argparse
+import os
+import subprocess
 from pathlib import Path
 
 import numpy as np
@@ -17,16 +19,23 @@ from src.utils import (
 )
 
 
-def detect_task_type():
+def detect_task_type(force_gpu: bool = False):
+    gpu_available = False
+    exc = None
     try:
-        import catboost
+        result = subprocess.run(["nvidia-smi"], capture_output=True, text=True)
+        if result.returncode == 0 and result.stdout:
+            if "GPU" in result.stdout or "Tesla" in result.stdout or "T4" in result.stdout:
+                gpu_available = True
+                print("[CAT] nvidia-smi detected GPU - using GPU training")
+    except Exception as err:  # pragma: no cover - diagnostic
+        exc = err
+        print(f"[CAT] GPU check failed ({err}); defaulting to CPU")
 
-        devices = catboost.config.get_devices()
-        if devices and any("GPU" in d for d in devices):
-            return "GPU"
-    except Exception:
-        pass
-    return "CPU"
+    if force_gpu and not gpu_available:
+        raise RuntimeError(f"--gpu/ FORCE_GPU set but GPU unavailable or failed detection: {exc}")
+
+    return "GPU" if gpu_available else "CPU"
 
 
 def run(force: bool = False, smoke: bool = False):
@@ -36,6 +45,8 @@ def run(force: bool = False, smoke: bool = False):
 
     target = "diagnosed_diabetes"
     id_col = "id"
+
+    force_gpu = os.environ.get("FORCE_GPU", "0") == "1"
 
     num_cols, cat_cols = split_cols(train_df, target, id_col)
     train_proc, test_proc, num_cols, cat_cols = prepare_common(train_df, test_df, num_cols, cat_cols)
@@ -55,7 +66,8 @@ def run(force: bool = False, smoke: bool = False):
         "l2_leaf_reg": 5.0,
         "iterations": 4000 if not smoke else 20,
         "random_seed": SEED,
-        "task_type": detect_task_type(),
+        "task_type": detect_task_type(force_gpu=force_gpu),
+        "devices": "0",
         "verbose": 200,
         "od_type": "Iter",
         "od_wait": 100,
@@ -89,9 +101,14 @@ def run(force: bool = False, smoke: bool = False):
             model.fit(train_pool, eval_set=val_pool, use_best_model=True, verbose=200)
         except Exception as exc:
             if params["task_type"] == "GPU":
+                if force_gpu:
+                    raise RuntimeError(f"[Fold {fold+1}] GPU requested but training failed: {exc}")
                 print(f"[Fold {fold+1}] GPU failed ({exc}); retrying on CPU")
-                params["task_type"] = "CPU"
-                model = CatBoostClassifier(**params)
+                params_cpu = params.copy()
+                params_cpu["task_type"] = "CPU"
+                params_cpu.pop("devices", None)
+                params = params_cpu
+                model = CatBoostClassifier(**params_cpu)
                 model.fit(train_pool, eval_set=val_pool, use_best_model=True, verbose=200)
             else:
                 raise

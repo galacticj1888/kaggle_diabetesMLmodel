@@ -1,10 +1,10 @@
 """Project initializer for Kaggle Diabetes S5E12."""
-import importlib
 import os
 import random
 import sys
 import warnings
 from pathlib import Path
+import subprocess
 
 import numpy as np
 import pandas as pd
@@ -87,6 +87,21 @@ def print_env_report():
     print("[ENV] Kaggle environment:", IN_KAGGLE)
     print("[ENV] Data directory:", DATA_DIR)
     print("[ENV] Device:", DEVICE)
+
+    # GPU visibility
+    try:
+        result = subprocess.run(
+            ["nvidia-smi", "--query-gpu=name,memory.total", "--format=csv,noheader"],
+            capture_output=True,
+            text=True,
+        )
+        if result.returncode == 0:
+            print(f"[ENV] GPU: {result.stdout.strip()}")
+        else:
+            print("[ENV] GPU: nvidia-smi unavailable")
+    except FileNotFoundError:
+        print("[ENV] GPU: nvidia-smi not found")
+
     versions = [
         safe_version(np, "numpy"),
         safe_version(pd, "pandas"),

@@ -23,6 +23,7 @@ def main(argv=None) -> int:
     parser.add_argument("--force_adv", action="store_true", help="Force recomputing adversarial artifacts in full mode")
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--smoke", action="store_true", help="Fast tiny runs for validation")
+    parser.add_argument("--gpu", action="store_true", help="Force GPU mode for stacking run")
     args = parser.parse_args(argv)
 
     mode = args.mode.lower()
@@ -76,6 +77,8 @@ def main(argv=None) -> int:
         cmd_stack = [sys.executable, str(ROOT / "run_full_stack.py")]
         if args.smoke:
             cmd_stack.append("--smoke")
+        if args.gpu:
+            cmd_stack.append("--gpu")
         run_cmd(cmd_stack)
 
     print("[RUN] Done.")
