@@ -1,62 +1,48 @@
-# Shift-aware Kaggle Diabetes Baselines (S5E12)
+# Kaggle Diabetes (S5E12) – Multi-Model Stacking Baseline
 
-This repository provides a clean, fast baseline stack for the **Playground Series S5E12 – Diabetes Prediction** competition. It focuses on two runs you can execute directly inside a Kaggle notebook in under 30 minutes:
+This repository delivers a **fast, shift-resilient ensemble baseline** for the Playground Series S5E12 (Diabetes Prediction). It centers on three diverse tree boosters (LightGBM, XGBoost, CatBoost) trained on shared folds, plus rank/mean blends and a logistic-regression stacker. Everything runs cleanly inside a Kaggle notebook with a single command.
 
-- **Naive baseline**: plain LightGBM, no shift handling — a reality check.
-- **Shift-aware baseline**: LightGBM with adversarial weights, p_test feature, and shift-aware stratification.
-
-Artifacts are cached to accelerate iteration and to make the effect of distribution-shift mitigation measurable.
+## Current anchor
+- Naive LightGBM CV AUC ≈ 0.727, Public LB ≈ 0.697 (5-fold target-only stratification).
+- Shift-aware weighting was less stable on LB, so the default stack **does not** use domain weights.
 
 ## Quickstart (Kaggle)
-
 ```bash
-# Option A: Naive baseline (no shift awareness, ~10 min)
-!python run_kaggle.py --mode naive
+# Run the full stack (all base models + blends + stacker)
+!python run_kaggle.py --mode stack
 
-# Option B: Shift-aware baseline (compute adversarial artifacts + train)
-!python run_kaggle.py --mode full
+# Fast smoke check (2 folds, tiny iterations)
+!python run_kaggle.py --mode stack --smoke
 
-# Option C: Shift-aware baseline when artifacts already exist
-!python run_kaggle.py --mode shift --use_weights --use_p_test_feature --stratify_domain
+# Individual models if you want to iterate
+!python baseline_lgbm.py
+!python baseline_xgboost.py
+!python baseline_catboost.py
 ```
-
-Outputs are written to the working directory:
-- `submission_naive.csv`, `oof_naive.npy`, `test_naive.npy`
-- `submission_shift.csv`, `oof_shift.npy`, `test_shift.npy`
-- `artifacts/adversarial_mapping.parquet`, `artifacts/adversarial_metadata.json`
+Outputs land in:
+- `outputs/`: `oof_*.npy`, `test_*.npy`, stacked outputs
+- `submissions/`: submission CSVs for each model/blend/stack
+- `artifacts/`: shared fold assignments and cached utilities
 
 ## Components
+- `src/utils.py` – shared Kaggle/local path detection, preprocessing (median/UNKNOWN), fold persistence (int8 fold assignments), and saving helpers.
+- `baseline_lgbm.py` – LightGBM baseline with native categoricals, early stopping, verbose per-fold AUC, cached OOF/test arrays.
+- `baseline_xgboost.py` – XGBoost baseline with GPU autodetect + safe CPU fallback, categorical support with ordinal fallback.
+- `baseline_catboost.py` – CatBoost baseline with GPU/CPU fallback, string categoricals, early stopping.
+- `ensemble.py` – mean blend, rank-mean blend, and logistic regression stacker (honest meta-OOF on shared folds) with coefficient reporting.
+- `run_full_stack.py` – orchestrator to run all base models then ensemble, path-stable via absolute script resolution.
+- `run_kaggle.py` – notebook-friendly entrypoint with modes: `naive` (LGBM), `shift/full` (legacy shift-aware), `stack` (full ensemble).
+- `init.py` – environment bootstrap with device detection, dependency/version report, and seed helper.
 
-### `baseline_naive.py`
-- 5-fold StratifiedKFold on the target only.
-- Native LightGBM categorical handling with simple missing-value fills.
-- Early stopping (100 rounds, max 2000 trees) and verbose per-fold logging.
-- Saves OOF/test predictions and a submission CSV.
-
-### `adversarial_mapping.py`
-- Trains a 5-fold adversarial classifier (train=0 vs test=1).
-- Computes `p_test`, `domain_weight` (clipped/normalized), and `domain_bin` (10-quantile bins).
-- Saves `artifacts/adversarial_mapping.parquet` and metadata JSON; skips recomputation unless `--force` is passed.
-
-### `baseline_shift_aware.py`
-- Loads adversarial artifacts and optionally:
-  - Applies `domain_weight` as `sample_weight`.
-  - Adds `p_test` as a feature.
-  - Stratifies CV by `label × domain_bin`.
-- Reports weighted and unweighted AUC per fold plus OOF.
-- Saves OOF/test predictions and a submission CSV.
-
-### `run_kaggle.py`
-- Single entrypoint for Kaggle notebooks:
-  - `--mode naive`: run the naive baseline.
-  - `--mode shift`: run shift-aware baseline (assumes artifacts exist).
-  - `--mode full`: recompute adversarial artifacts then train shift-aware baseline with all ablations on.
+## Design choices
+- **Shared folds**: persisted once (`artifacts/folds.npy`) to keep OOFs aligned for stacking.
+- **No shift weighting by default**: adversarial weights are optional diagnostics only.
+- **Caching**: each script skips retrain unless `--force` is passed.
+- **Reproducibility**: global seed=42, float32 outputs, row order preserved.
+- **Logging**: verbose fold logs and OOF metrics for every model and blend.
 
 ## Paths
-- Kaggle data: `/kaggle/input/playground-series-s5e12/{train.csv,test.csv,sample_submission.csv}`
-- Local default: `./data/{train.csv,test.csv,sample_submission.csv}`
+- Kaggle: `/kaggle/input/playground-series-s5e12/{train.csv,test.csv,sample_submission.csv}`
+- Local (fallback): `./data/{train.csv,test.csv,sample_submission.csv}`
 
-## Notes
-- Categorical values are aligned across train/test with an explicit `UNKNOWN` bucket.
-- All outputs are float32 and preserve row order relative to the input CSVs.
-- Logging is intentionally verbose so you can follow training progress from notebook cells.
+Happy stacking—this baseline is built to iterate quickly and push LB AUC beyond the naive anchor.
